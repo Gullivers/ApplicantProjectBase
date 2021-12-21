@@ -186,5 +186,36 @@ namespace GGPlugins.GGStateMachine.Scripts.Abstract
         /// Clears the queue but the current action won't be cleared.
         /// </summary>
         void ClearQueue();
+
+        /// <summary>
+        /// Returns info of currently active state
+        /// </summary>
+        /// <returns></returns>
+        StateInfo GetCurrentState();
+        /// <summary>
+        /// Checks if the given identifier matches the currently active state
+        /// </summary>
+        /// <param name="identifier"></param>
+        /// <returns></returns>
+        bool CheckCurrentState(string identifier);
+        /// <summary>
+        /// Checks if the type matches the currently active state.
+        /// This uses the types name to check for identifier. Make sure to provide identifiers for your states IF they're not unique.
+        /// </summary>
+        /// <param name="type"></param>
+        /// <returns></returns>
+        bool CheckCurrentState(Type type);
+        /// <summary>
+        /// Checks if the type matches the currently active state.
+        /// This uses the types name to check for identifier. Make sure to provide identifiers for your states IF they're not unique.
+        /// </summary>
+        /// <returns></returns>
+        bool CheckCurrentState<T>() where T : IGGState;
+        /// <summary>
+        /// Creates a new event handle instance which is used for registering to events.
+        /// </summary>
+        /// <returns></returns>
+        IStateMachineEventHandle RequestEventHandle();
+
     }
 }

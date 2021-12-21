@@ -31,6 +31,8 @@ namespace GGPlugins.GGStateMachine.Scripts
             _wrappedState = wrappedState ?? throw new ArgumentNullException(nameof(wrappedState),"StateWrapper cannot have null state as the wrapped state");
         }
 
+        public Type GetStateType() => _wrappedState.GetType();
+
         public StateResult OnMachineStarted()
         {
             try

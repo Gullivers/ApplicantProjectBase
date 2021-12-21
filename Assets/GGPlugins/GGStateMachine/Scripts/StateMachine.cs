@@ -16,16 +16,19 @@ namespace GGPlugins.GGStateMachine.Scripts
     {
         private readonly struct QueuedState
         {
+            public readonly Type StateType;
             public readonly string ID;
             public readonly object[] Parameters;
 
-            public QueuedState(string id)
+            public QueuedState(Type stateType, string id)
             {
+                StateType = stateType;
                 ID = id;
                 Parameters = new object[0];
             }
-            public QueuedState(string id, object[] parameters)
+            public QueuedState(Type stateType, string id, object[] parameters)
             {
+                StateType = stateType;
                 ID = id;
                 Parameters = parameters;
             }
@@ -36,6 +39,7 @@ namespace GGPlugins.GGStateMachine.Scripts
         private readonly Dictionary<string, StateWrapper> _stateMapping;
         private readonly Queue<QueuedState> _stateQueue;
         private readonly Stack<QueuedState> _history;
+        private readonly List<IStateMachineEventHandle> _stateMachineEventHandles;
         private CancellationTokenSource _cts;
         private bool _stateMachineRunning;
         private bool _aStateLoopIsActive;
@@ -50,6 +54,7 @@ namespace GGPlugins.GGStateMachine.Scripts
             _stateQueue = new Queue<QueuedState>();
             _aStateLoopIsActive = false;
             _history = new Stack<QueuedState>();
+            _stateMachineEventHandles = new List<IStateMachineEventHandle>();
         }
 
         public IGGStateMachine RegisterUniqueState(IGGStateBase state,string identifier = null)
@@ -118,7 +123,7 @@ namespace GGPlugins.GGStateMachine.Scripts
             
             EnsureIdentifier(entryStateIdentifier);
 
-            var stateElement = new QueuedState(entryStateIdentifier, parameters);
+            var stateElement = new QueuedState(_stateMapping[entryStateIdentifier].GetStateType(),entryStateIdentifier, parameters);
             _stateMachineRunning = true;
             _stateQueue.Enqueue(stateElement);
             _cts = new CancellationTokenSource();
@@ -132,6 +137,7 @@ namespace GGPlugins.GGStateMachine.Scripts
                     CheckResult(startStateResult,"OnMachineStartState",pair.Key);
                 }
             }
+            ForEventHandles(x=>x.CallMachineStarted(new StateInfo(stateElement.StateType,stateElement.ID)));
             RunNextState();
         }
 
@@ -170,7 +176,8 @@ namespace GGPlugins.GGStateMachine.Scripts
             if (!InteractionCheck()) return;
             
             EnsureIdentifier(identifier);
-            _stateQueue.Enqueue( new QueuedState(identifier,parameters));
+            _stateQueue.Enqueue( new QueuedState(_stateMapping[identifier].GetStateType(),identifier,parameters));
+            ForEventHandles(x=>x.CallStateChangeRequested(new StateInfo(_stateMapping[identifier].GetStateType(),identifier),StateRequestType.Enqueue));
         }
 
         public void EnqueueState(Type type)
@@ -208,7 +215,9 @@ namespace GGPlugins.GGStateMachine.Scripts
             if (!InteractionCheck()) return;
             EnsureIdentifier(identifier);
             _stateQueue.Clear();
-            _stateQueue.Enqueue(new QueuedState(identifier,parameters));
+            _stateQueue.Enqueue(new QueuedState(_stateMapping[identifier].GetStateType(),identifier,parameters));
+            
+            ForEventHandles(x=>x.CallStateChangeRequested(new StateInfo(_stateMapping[identifier].GetStateType(),identifier),StateRequestType.Switch));
         }
 
         public void SwitchToState(Type type)
@@ -273,6 +282,33 @@ namespace GGPlugins.GGStateMachine.Scripts
             _stateQueue.Clear();
         }
 
+        public StateInfo GetCurrentState()
+        {
+            return _activeStateInfo;
+        }
+
+        public bool CheckCurrentState(string identifier)
+        {
+            return _activeStateInfo.Identifier == identifier;
+        }
+
+        public bool CheckCurrentState(Type type)
+        {
+            return _activeStateInfo.Type == type;
+        }
+
+        public bool CheckCurrentState<T>() where T : IGGState
+        {
+            return _activeStateInfo.Type == typeof(T);
+        }
+
+        public IStateMachineEventHandle RequestEventHandle()
+        {
+            var handle = new StateMachineEventHandle();
+            _stateMachineEventHandles.Add(handle);
+            return handle;
+        }
+
         public void RequestExit()
         {
             if (!_stateMachineRunning)
@@ -303,7 +339,15 @@ namespace GGPlugins.GGStateMachine.Scripts
             }
         }
 
-        private string _activeState;
+        private void ForEventHandles(Action<StateMachineEventHandle> action)
+        {
+            foreach (var handle in _stateMachineEventHandles)
+            {
+                action((StateMachineEventHandle) handle);
+            }
+        }
+        
+        private StateInfo _activeStateInfo;
         private async UniTask RunNextState()
         {
             if (_aStateLoopIsActive) return;
@@ -313,21 +357,26 @@ namespace GGPlugins.GGStateMachine.Scripts
             var stateElement = _stateQueue.Dequeue();
             var stateId = stateElement.ID;
             var state = _stateMapping[stateId];
-            if (_settings.DontSwitchToSameState && stateId == _activeState)
+            if (_settings.DontSwitchToSameState && stateId == _activeStateInfo.Identifier)
             {
                 RunNextState();
                 return;
             }
-            _activeState = stateId;
+            _activeStateInfo = new StateInfo(stateElement.StateType, stateId);
+            ForEventHandles(x=>x.CallCurrentStateChanged(_activeStateInfo));
             StateResult result;
             
             result = state.Setup(stateElement.Parameters);
             _history.Push(stateElement);
             CheckResult(result,"Setup",stateId);
+            ForEventHandles(x=>x.CallBeforeStart(_activeStateInfo));
             result = await state.Entry(_cts.Token).AttachExternalCancellation(_cts.Token);
+            ForEventHandles(x=>x.CallAfterStart(_activeStateInfo));
             CheckResult(result,"Entry",stateId);
             await UniTask.WaitUntil(() => _stateQueue.Count > 0 || _exitRequested).AttachExternalCancellation(_cts.Token);
+            ForEventHandles(x=>x.CallBeforeExit(_activeStateInfo));
             result =  await state.Exit(_cts.Token).AttachExternalCancellation(_cts.Token);
+            ForEventHandles(x=>x.CallAfterExit(_activeStateInfo));
             CheckResult(result,"Exit",stateId);
             result = state.CleanUp();
             CheckResult(result,"CleanUp",stateId);
@@ -337,12 +386,13 @@ namespace GGPlugins.GGStateMachine.Scripts
                 _exitRequested = false;
                 _stateMachineRunning = false;
                 _history.Clear();
-                _activeState = "";
+                _activeStateInfo = new StateInfo(null,"");
                 foreach (var pair in _stateMapping)
                 {
                     result = pair.Value.OnMachineExit();
                     CheckResult(result,"OnMachineExit",pair.Key);
                 }
+                ForEventHandles(x=>x.CallMachineExit());
                 return;
             }
             RunNextState();
@@ -352,6 +402,7 @@ namespace GGPlugins.GGStateMachine.Scripts
         {
             _cts?.Cancel();
             _cts?.Dispose();
+            ForEventHandles(x=>x.ClearAllListeners());
         }
     }
 }
