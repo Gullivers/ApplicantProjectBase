@@ -2,10 +2,11 @@
 using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using GGPlugins.GGLogger;
+// using GGPlugins.GGLogger;
 using GGPlugins.GGStateMachine.Scripts.Abstract;
 using GGPlugins.GGStateMachine.Scripts.Data;
 using GGPlugins.GGStateMachine.Scripts.Exceptions;
+using UnityEngine;
 
 #pragma warning disable 4014
 
@@ -33,7 +34,7 @@ namespace GGPlugins.GGStateMachine.Scripts
                 Parameters = parameters;
             }
         }
-        private readonly IGGLogger _logger;
+        // private readonly IGGLogger _logger;
         private StateMachineSettings _settings;
         
         private readonly Dictionary<string, StateWrapper> _stateMapping;
@@ -45,10 +46,10 @@ namespace GGPlugins.GGStateMachine.Scripts
         private bool _aStateLoopIsActive;
         private bool _exitRequested;
 
-        public IggStateMachine(StateMachineSettings settings, IGGLogger logger)
+        public IggStateMachine(StateMachineSettings settings/*, IGGLogger logger*/)
         {
             _settings = settings;
-            _logger = logger;
+            // _logger = logger;
             _stateMapping = new Dictionary<string, StateWrapper>();
             _stateMachineRunning = false;
             _stateQueue = new Queue<QueuedState>();
@@ -61,14 +62,16 @@ namespace GGPlugins.GGStateMachine.Scripts
         {
             if (_stateMachineRunning)
             {
-                _logger.W("StateMachine: Can't add new state while the state machine is running.");
+                Debug.LogWarning("StateMachine: Can't add new state while the state machine is running.");
+                // _logger.W("StateMachine: Can't add new state while the state machine is running.");
                 return this;
             }
 
             var id = !string.IsNullOrEmpty(identifier) ? identifier : GetTypeString(state.GetType());
             if (_stateMapping.ContainsKey(id))
             {
-                _logger.W("StateMachine: Attempted to add a state machine but a state with the same identifier was added before. If you're adding two instances of the same state class, make sure you input an identifier to separate them.");
+                Debug.LogWarning("StateMachine: Attempted to add a state machine but a state with the same identifier was added before. If you're adding two instances of the same state class, make sure you input an identifier to separate them.");
+                // _logger.W("StateMachine: Attempted to add a state machine but a state with the same identifier was added before. If you're adding two instances of the same state class, make sure you input an identifier to separate them.");
                 return this;
             }
             state.SetStateMachine(this);
@@ -85,13 +88,15 @@ namespace GGPlugins.GGStateMachine.Scripts
         {
             if (!_stateMachineRunning)
             {
-                _logger.W("StateMachine: Cannot interact with machine until the state machine starts.");
+                // _logger.W("StateMachine: Cannot interact with machine until the state machine starts.");
+                Debug.LogWarning("StateMachine: Cannot interact with machine until the state machine starts.");
                 return false;
             }
 
             if (_exitRequested)
             {
-                _logger.W("StateMachine: Cannot interact with machine if exit was requested");
+                Debug.LogWarning("StateMachine: Cannot interact with machine if exit was requested");
+                // _logger.W("StateMachine: Cannot interact with machine if exit was requested");
                 return false;
             }
 
@@ -112,12 +117,14 @@ namespace GGPlugins.GGStateMachine.Scripts
         {
             if (_exitRequested)
             {
-                _logger.W("StateMachine: Exit not yet complete!");
+                Debug.LogWarning("StateMachine: Exit not yet complete!");
+                // _logger.W("StateMachine: Exit not yet complete!");
                 return;
             }
             if (_stateMachineRunning)
             {
-                _logger.W("StateMachine: Cannot start machine twice.");
+                Debug.LogWarning("StateMachine: Cannot start machine twice.");
+                // _logger.W("StateMachine: Cannot start machine twice.");
                 return;
             }
             
@@ -255,7 +262,8 @@ namespace GGPlugins.GGStateMachine.Scripts
             if (!InteractionCheck()) return;
             if (_history.Count == 0)
             {
-                _logger.W("StateMachine: No previous state found to switch to");
+                Debug.LogWarning("StateMachine: No previous state found to switch to");
+                // _logger.W("StateMachine: No previous state found to switch to");
                 return;
             }
 
@@ -268,7 +276,8 @@ namespace GGPlugins.GGStateMachine.Scripts
             if (!InteractionCheck()) return;
             if (_history.Count == 0)
             {
-                _logger.W("StateMachine: No previous state found to switch to");
+                Debug.LogWarning("StateMachine: No previous state found to switch to");
+                // _logger.W("StateMachine: No previous state found to switch to");
                 return;
             }
 
@@ -313,13 +322,15 @@ namespace GGPlugins.GGStateMachine.Scripts
         {
             if (!_stateMachineRunning)
             {
-                _logger.W("StateMachine: Cannot exit machine if it is not running.");
+                Debug.LogWarning("StateMachine: Cannot exit machine if it is not running.");
+                // _logger.W("StateMachine: Cannot exit machine if it is not running.");
                 return;
             }
 
             if (_exitRequested)
             {
-                _logger.W("StateMachine: Exit was already requested!");
+                Debug.LogWarning("StateMachine: Exit was already requested!");
+                // _logger.W("StateMachine: Exit was already requested!");
                 return;
             }
             _stateQueue.Clear();
@@ -335,7 +346,8 @@ namespace GGPlugins.GGStateMachine.Scripts
         {
             if (result.ErrorOccured)
             {
-                _logger.E($"StateMachine: An exception occured during execution of state {stateId} - {stage} phase. Will continue normally. {result.ExceptionThrown} ");
+                Debug.Log($"StateMachine: An exception occured during execution of state {stateId} - {stage} phase. Will continue normally. {result.ExceptionThrown} ");
+                // _logger.E($"StateMachine: An exception occured during execution of state {stateId} - {stage} phase. Will continue normally. {result.ExceptionThrown} ");
             }
         }
 
